@@ -1,6 +1,7 @@
 package pmv.project.PmSystemBot.service
 
 
+import com.vdurmont.emoji.EmojiParser
 import mu.KotlinLogging
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.stereotype.Component
@@ -74,7 +75,7 @@ class TelegramBot(botConfig: BotConfig) : TelegramLongPollingBot() {
             userRepository.save(user)
             startCommandReciver(chatId, chat.userName)
         } else {
-            sendMessage(chatId, "User already register!")
+            sendMessage(chatId, EmojiParser.parseToUnicode("User already register! :sweat_smile:"))
         }
     }
 
@@ -100,7 +101,8 @@ class TelegramBot(botConfig: BotConfig) : TelegramLongPollingBot() {
     }
 
     private fun startCommandReciver(chatId: Long?, name: String) {
-        val answer = "Hello ${name}, nice too met you!"
+        val answer = EmojiParser.parseToUnicode("Hello ${name}, nice too met you! :blush:")
+
         logger.info("Replied to user $name")
         sendMessage(chatId, answer)
     }
