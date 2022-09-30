@@ -2,21 +2,29 @@ package pmv.project.PmSystemBot.service
 
 
 import mu.KotlinLogging
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.stereotype.Component
 import org.telegram.telegrambots.bots.TelegramLongPollingBot
 import org.telegram.telegrambots.meta.api.methods.commands.SetMyCommands
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage
+import org.telegram.telegrambots.meta.api.objects.Message
 import org.telegram.telegrambots.meta.api.objects.Update
 import org.telegram.telegrambots.meta.api.objects.commands.BotCommand
 import org.telegram.telegrambots.meta.api.objects.commands.scope.BotCommandScope
 import org.telegram.telegrambots.meta.api.objects.commands.scope.BotCommandScopeDefault
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException
 import pmv.project.PmSystemBot.config.BotConfig
+import pmv.project.PmSystemBot.model.User
+import pmv.project.PmSystemBot.model.UserRepository
 import java.lang.RuntimeException
+import java.sql.Timestamp
 
 @Component
 class TelegramBot(botConfig: BotConfig) : TelegramLongPollingBot() {
     private val logger = KotlinLogging.logger {}
+
+    @Autowired
+    lateinit var userRepository: UserRepository
 
     private final var config: BotConfig = botConfig
 
@@ -49,6 +57,27 @@ class TelegramBot(botConfig: BotConfig) : TelegramLongPollingBot() {
         return  config.botName
     }
 
+    private fun registerUser(msg: Message) {
+
+        val chat = msg.chat
+        val chatId = chat.id
+
+        if (userRepository.findById(chatId).isEmpty) {
+            val user = User(
+                id = chatId,
+                firstName = chat.firstName,
+                lastName = chat.lastName,
+                userName = chat.userName,
+                registeredAt = Timestamp(System.currentTimeMillis())
+            )
+
+            userRepository.save(user)
+            startCommandReciver(chatId, chat.userName)
+        } else {
+            sendMessage(chatId, "User already register!")
+        }
+    }
+
     override fun onUpdateReceived(update: Update?) {
         if (update != null) {
             if (update.hasMessage() && update.message.hasText()) {
@@ -56,7 +85,7 @@ class TelegramBot(botConfig: BotConfig) : TelegramLongPollingBot() {
                 val chatId= update.message.chatId
 
                 when (messageText) {
-                    "/start" -> startCommandReciver(chatId, update.message.chat.userName)
+                    "/start" -> registerUser(update.message)
                     "/myinfo" -> sendMessage(chatId, "Username: ${update.message.chat.userName} \n" +
                             "Firstname: ${update.message.chat.firstName} \n" +
                             "LastName: ${update.message.chat.lastName} \n" +
