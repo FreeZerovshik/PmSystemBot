@@ -13,6 +13,9 @@ import org.telegram.telegrambots.meta.api.objects.Update
 import org.telegram.telegrambots.meta.api.objects.commands.BotCommand
 import org.telegram.telegrambots.meta.api.objects.commands.scope.BotCommandScope
 import org.telegram.telegrambots.meta.api.objects.commands.scope.BotCommandScopeDefault
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboard
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboardMarkup
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardRow
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException
 import pmv.project.PmSystemBot.config.BotConfig
 import pmv.project.PmSystemBot.model.User
@@ -56,6 +59,21 @@ class TelegramBot(botConfig: BotConfig) : TelegramLongPollingBot() {
 
     override fun getBotUsername(): String {
         return  config.botName
+    }
+
+    private fun getKeyboard(): ReplyKeyboardMarkup  {
+        val keyboardMarkup = ReplyKeyboardMarkup()
+
+        val keyboardRows = mutableListOf<KeyboardRow>()
+
+        val row = KeyboardRow()
+        row.add("текущие задачи")
+        row.add("отметить часы по задаче")
+        keyboardRows.add(row)
+
+        keyboardMarkup.keyboard = keyboardRows
+
+        return keyboardMarkup
     }
 
     private fun registerUser(msg: Message) {
@@ -104,13 +122,15 @@ class TelegramBot(botConfig: BotConfig) : TelegramLongPollingBot() {
         val answer = EmojiParser.parseToUnicode("Hello ${name}, nice too met you! :blush:")
 
         logger.info("Replied to user $name")
-        sendMessage(chatId, answer)
+        sendMessage(chatId, answer, getKeyboard())
     }
 
-    private fun sendMessage(chatId: Long?, textToSend: String)  {
+    private fun sendMessage(chatId: Long?, textToSend: String, keyboardMarkup: ReplyKeyboardMarkup? = null)  {
         val message = SendMessage()
         message.chatId = chatId.toString()
         message.text = textToSend
+
+        keyboardMarkup?.let { message.replyMarkup = keyboardMarkup }
 
         try {
             execute(message)
