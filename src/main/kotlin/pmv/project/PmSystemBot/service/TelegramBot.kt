@@ -8,16 +8,20 @@ import org.springframework.stereotype.Component
 import org.telegram.telegrambots.bots.TelegramLongPollingBot
 import org.telegram.telegrambots.meta.api.methods.commands.SetMyCommands
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage
+import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText
 import org.telegram.telegrambots.meta.api.objects.Message
 import org.telegram.telegrambots.meta.api.objects.Update
 import org.telegram.telegrambots.meta.api.objects.commands.BotCommand
 import org.telegram.telegrambots.meta.api.objects.commands.scope.BotCommandScope
 import org.telegram.telegrambots.meta.api.objects.commands.scope.BotCommandScopeDefault
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboard
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboardMarkup
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardRow
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException
 import pmv.project.PmSystemBot.config.BotConfig
+import pmv.project.PmSystemBot.constant.Constant
 import pmv.project.PmSystemBot.model.User
 import pmv.project.PmSystemBot.model.UserRepository
 import java.lang.RuntimeException
@@ -32,19 +36,14 @@ class TelegramBot(botConfig: BotConfig) : TelegramLongPollingBot() {
 
     private final var config: BotConfig = botConfig
 
-    private final val HELP_INFO = "Этот бот создан как пет проект, для изучения возможностей TelegramBotApi на языке разработки Kotlin\n" +
-            "Введите /start для запуска бота\n" +
-            "Введите /myinfo для получения информации о себе\n" +
-            "Введите /deleteinfo для удаления инфомарции о себе\n" +
-            "Введите /help для получения справки по работе данного бота\n"
-
-
     init {
         val commandsList = mutableListOf<BotCommand>()
-        commandsList.add(BotCommand("/start", "Start Bot"))
-        commandsList.add(BotCommand("/myinfo", "Show my info"))
-        commandsList.add(BotCommand("/deleteinfo", "Delete my info"))
-        commandsList.add(BotCommand("/help","Show help"))
+        commandsList.add(BotCommand("/start", "Регистрация"))
+        commandsList.add(BotCommand("/myinfo", "Показать мой профиль"))
+        commandsList.add(BotCommand("/deleteinfo", "Удалить мой профиль и выйти"))
+        commandsList.add(BotCommand("/mytasks", "Показать мои задачи"))
+        commandsList.add(BotCommand("/gettask", "Показать задачу"))
+        commandsList.add(BotCommand("/help","Справка"))
         try {
             this.execute(SetMyCommands(commandsList, BotCommandScopeDefault(), null))
         } catch (e: TelegramApiException) {
@@ -97,25 +96,126 @@ class TelegramBot(botConfig: BotConfig) : TelegramLongPollingBot() {
         }
     }
 
+    private fun getMyInfo(chatId: Long, message: Message) {
+        sendMessage(chatId, "Username: ${message.chat.userName} \n" +
+                "Firstname: ${message.chat.firstName} \n" +
+                "LastName: ${message.chat.lastName} \n" +
+                "Bio: ${message.chat.bio} \n" +
+                "Contacts: ${message.contact} \n" +
+                "Location: ${message.chat?.location?.address} \n" )
+    }
+
     override fun onUpdateReceived(update: Update?) {
         if (update != null) {
-            if (update.hasMessage() && update.message.hasText()) {
+            if (update.hasMessage() && update.message.hasText() ) {
                 val messageText = update.message.text
                 val chatId= update.message.chatId
-
                 when (messageText) {
                     "/start" -> registerUser(update.message)
-                    "/myinfo" -> sendMessage(chatId, "Username: ${update.message.chat.userName} \n" +
-                            "Firstname: ${update.message.chat.firstName} \n" +
-                            "LastName: ${update.message.chat.lastName} \n" +
-                            "Bio: ${update.message.chat.bio} \n" +
-                            "Contacts: ${update.message.contact} \n" +
-                            "Location: ${update.message.chat?.location?.address} \n" )
-                    "/help" -> sendMessage(chatId, HELP_INFO)
+                    "/myinfo" -> getMyInfo(chatId, update.message)
+                    "/mytasks" -> getMyTasks(chatId)
+                    "/gettask" -> getTask(chatId)
+                    "/help" -> sendMessage(chatId, Constant.HELP_INFO)
                 else -> sendMessage(chatId, "Sorry, command was recognized!")
                 }
+            } else if (update.hasCallbackQuery()) {
+                val callbackData = update.callbackQuery.data
+                val messageId = update.callbackQuery.message.messageId
+                val chatId = update.callbackQuery.message.chatId
+
+                if (callbackData.equals( "STATUS_BUTTON")) {
+                    val text = "Статус по задаче изменен на ... "
+                    val message  = EditMessageText()
+                    message.chatId = chatId.toString()
+                    message.text = text
+                    message.messageId = messageId
+
+                    try {
+                        execute(message)
+                    } catch (e: TelegramApiException)
+                    {
+                        logger.error("Error:" + e.message)
+                    }
+                } else if (callbackData.equals("DATEEND_BUTTON")) {
+                    val text = "Дата окончания изменена на ..."
+                    val message  = EditMessageText()
+                    message.chatId = chatId.toString()
+                    message.text = text
+                    message.messageId = messageId
+
+                    try {
+                        execute(message)
+                    } catch (e: TelegramApiException)
+                    {
+                        logger.error("Error:" + e.message)
+                    }
+                } else if (callbackData.equals("ASSIGNEE_BUTTON")) {
+                    val text = "Исполнитель изменен на ..."
+                    val message  = EditMessageText()
+                    message.chatId = chatId.toString()
+                    message.text = text
+                    message.messageId = messageId
+
+                    try {
+                        execute(message)
+                    } catch (e: TelegramApiException)
+                    {
+                        logger.error("Error:" + e.message)
+                    }
+                }
+
             }
         }
+    }
+
+    private fun getTask(chatId: Long) {
+
+       val message = SendMessage()
+        message.chatId = chatId.toString()
+        message.text = "Введите номер задачи"
+
+        val inlineMarkup = InlineKeyboardMarkup()
+        val rowsInline = mutableListOf<MutableList<InlineKeyboardButton>>()
+        val rowInLine = mutableListOf<InlineKeyboardButton>()
+        val statusButton = InlineKeyboardButton()
+        statusButton.text = "Сменить статус"
+        statusButton.callbackData = "STATUS_BUTTON"
+
+        val dateEndButton = InlineKeyboardButton()
+        dateEndButton.text = "Изменить дату окончания"
+        dateEndButton.callbackData = "DATEEND_BUTTON"
+
+        val assigneeButton = InlineKeyboardButton()
+        assigneeButton.text = "Поменять исполнителя"
+        assigneeButton.callbackData = "ASSIGNEE_BUTTON"
+
+        rowInLine.add(statusButton)
+        rowInLine.add(dateEndButton)
+        rowInLine.add(assigneeButton)
+
+        rowsInline.add(rowInLine)
+
+        inlineMarkup.keyboard = rowsInline
+        message.replyMarkup = inlineMarkup
+
+        try {
+            execute(message)
+        } catch (e: TelegramApiException) {
+            logger.error(e.message)
+        }
+    }
+
+    private fun getMyTasks(chatId: Long) {
+
+       for ( i in 1..10 ) {
+           val taskInfo =
+               "Список задач\n" +
+                       "{$i} - Код: |" + "Наименование: |" + "Описание: |" + "Дата начала: |" + "Дата окончания: |" + "Исполнитель: |" + "Статус:"
+
+           sendMessage(chatId, taskInfo)
+       }
+
+
     }
 
     private fun startCommandReciver(chatId: Long?, name: String) {
