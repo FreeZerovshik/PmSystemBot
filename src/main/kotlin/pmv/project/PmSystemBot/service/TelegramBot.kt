@@ -12,10 +12,8 @@ import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageTe
 import org.telegram.telegrambots.meta.api.objects.Message
 import org.telegram.telegrambots.meta.api.objects.Update
 import org.telegram.telegrambots.meta.api.objects.commands.BotCommand
-import org.telegram.telegrambots.meta.api.objects.commands.scope.BotCommandScope
 import org.telegram.telegrambots.meta.api.objects.commands.scope.BotCommandScopeDefault
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup
-import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboard
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboardMarkup
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardRow
@@ -24,8 +22,9 @@ import pmv.project.PmSystemBot.config.BotConfig
 import pmv.project.PmSystemBot.constant.Constant
 import pmv.project.PmSystemBot.model.User
 import pmv.project.PmSystemBot.model.UserRepository
-import java.lang.RuntimeException
 import java.sql.Timestamp
+
+private const val ERROR_MSG = "Error:"
 
 @Component
 class TelegramBot(botConfig: BotConfig) : TelegramLongPollingBot() {
@@ -43,11 +42,11 @@ class TelegramBot(botConfig: BotConfig) : TelegramLongPollingBot() {
         commandsList.add(BotCommand("/deleteinfo", "Удалить мой профиль и выйти"))
         commandsList.add(BotCommand("/mytasks", "Показать мои задачи"))
         commandsList.add(BotCommand("/gettask", "Показать задачу"))
-        commandsList.add(BotCommand("/help","Справка"))
+        commandsList.add(BotCommand("/help", "Справка"))
         try {
             this.execute(SetMyCommands(commandsList, BotCommandScopeDefault(), null))
         } catch (e: TelegramApiException) {
-            logger.error("Error: ${e.message}")
+            logger.error("$ERROR_MSG ${e.message}")
         }
     }
 
@@ -57,10 +56,11 @@ class TelegramBot(botConfig: BotConfig) : TelegramLongPollingBot() {
     }
 
     override fun getBotUsername(): String {
-        return  config.botName
+        return config.botName
     }
 
-    private fun getKeyboard(): ReplyKeyboardMarkup  {
+
+    private fun getKeyboard(): ReplyKeyboardMarkup {
         val keyboardMarkup = ReplyKeyboardMarkup()
 
         val keyboardRows = mutableListOf<KeyboardRow>()
@@ -97,80 +97,78 @@ class TelegramBot(botConfig: BotConfig) : TelegramLongPollingBot() {
     }
 
     private fun getMyInfo(chatId: Long, message: Message) {
-        sendMessage(chatId, "Username: ${message.chat.userName} \n" +
-                "Firstname: ${message.chat.firstName} \n" +
-                "LastName: ${message.chat.lastName} \n" +
-                "Bio: ${message.chat.bio} \n" +
-                "Contacts: ${message.contact} \n" +
-                "Location: ${message.chat?.location?.address} \n" )
+        sendMessage(
+            chatId, "Username: ${message.chat.userName} \n" +
+                    "Firstname: ${message.chat.firstName} \n" +
+                    "LastName: ${message.chat.lastName} \n" +
+                    "Bio: ${message.chat.bio} \n" +
+                    "Contacts: ${message.contact} \n" +
+                    "Location: ${message.chat?.location?.address} \n"
+        )
     }
 
     override fun onUpdateReceived(update: Update?) {
         if (update != null) {
-            if (update.hasMessage() && update.message.hasText() ) {
+            if (update.hasMessage() && update.message.hasText()) {
                 val messageText = update.message.text
-                val chatId= update.message.chatId
-                when (messageText) {
-                    "/start" -> registerUser(update.message)
-                    "/myinfo" -> getMyInfo(chatId, update.message)
-                    "/mytasks" -> getMyTasks(chatId)
-                    "/gettask" -> getTask(chatId)
-                    "/help" -> sendMessage(chatId, Constant.HELP_INFO)
-                else -> sendMessage(chatId, "Sorry, command was recognized!")
+                val chatId = update.message.chatId
+
+                //массовая рассылка пользователям если команда содержит /send и всем оптраялется текст после пробела (доступна только пладельцу бота)
+                if (messageText.contains("/send") && config.owner == chatId) {
+                    val textToSend = EmojiParser.parseToUnicode(messageText.substring(messageText.indexOf(" ")))
+
+                    userRepository.findAll().forEach {
+                        sendMessage(it.id, textToSend)
+                    }
+                } else {
+
+                    //обработка команд 
+                    when (messageText) {
+                        "/start" -> registerUser(update.message)
+                        "/myinfo" -> getMyInfo(chatId, update.message)
+                        "/mytasks" -> getMyTasks(chatId)
+                        "/gettask" -> getTask(chatId)
+                        "/help" -> sendMessage(chatId, Constant.HELP_INFO)
+                        else -> sendMessage(chatId, "Sorry, command was recognized!")
+                    }
                 }
             } else if (update.hasCallbackQuery()) {
+                // Обработка ответов на пункты меню
                 val callbackData = update.callbackQuery.data
                 val messageId = update.callbackQuery.message.messageId
                 val chatId = update.callbackQuery.message.chatId
 
-                if (callbackData.equals( "STATUS_BUTTON")) {
+                if (callbackData.equals(Constant.STATUS_BUTTON)) {
                     val text = "Статус по задаче изменен на ... "
-                    val message  = EditMessageText()
-                    message.chatId = chatId.toString()
-                    message.text = text
-                    message.messageId = messageId
-
-                    try {
-                        execute(message)
-                    } catch (e: TelegramApiException)
-                    {
-                        logger.error("Error:" + e.message)
-                    }
-                } else if (callbackData.equals("DATEEND_BUTTON")) {
+                    executeEditMessageText(chatId, text, messageId)
+                } else if (callbackData.equals(Constant.DATEEND_BUTTON)) {
                     val text = "Дата окончания изменена на ..."
-                    val message  = EditMessageText()
-                    message.chatId = chatId.toString()
-                    message.text = text
-                    message.messageId = messageId
-
-                    try {
-                        execute(message)
-                    } catch (e: TelegramApiException)
-                    {
-                        logger.error("Error:" + e.message)
-                    }
-                } else if (callbackData.equals("ASSIGNEE_BUTTON")) {
+                    executeEditMessageText(chatId, text, messageId)
+                } else if (callbackData.equals(Constant.ASSIGNEE_BUTTON)) {
                     val text = "Исполнитель изменен на ..."
-                    val message  = EditMessageText()
-                    message.chatId = chatId.toString()
-                    message.text = text
-                    message.messageId = messageId
-
-                    try {
-                        execute(message)
-                    } catch (e: TelegramApiException)
-                    {
-                        logger.error("Error:" + e.message)
-                    }
+                    executeEditMessageText(chatId, text, messageId)
                 }
 
             }
         }
     }
 
+    private fun executeEditMessageText(chatId: Long, text: String, messageId: Int?) {
+        val message = EditMessageText()
+        message.chatId = chatId.toString()
+        message.text = text
+        message.messageId = messageId
+
+        try {
+            execute(message)
+        } catch (e: TelegramApiException) {
+            logger.error("$ERROR_MSG ${e.message}")
+        }
+    }
+
     private fun getTask(chatId: Long) {
 
-       val message = SendMessage()
+        val message = SendMessage()
         message.chatId = chatId.toString()
         message.text = "Введите номер задачи"
 
@@ -179,15 +177,15 @@ class TelegramBot(botConfig: BotConfig) : TelegramLongPollingBot() {
         val rowInLine = mutableListOf<InlineKeyboardButton>()
         val statusButton = InlineKeyboardButton()
         statusButton.text = "Сменить статус"
-        statusButton.callbackData = "STATUS_BUTTON"
+        statusButton.callbackData = Constant.STATUS_BUTTON
 
         val dateEndButton = InlineKeyboardButton()
         dateEndButton.text = "Изменить дату окончания"
-        dateEndButton.callbackData = "DATEEND_BUTTON"
+        dateEndButton.callbackData = Constant.DATEEND_BUTTON
 
         val assigneeButton = InlineKeyboardButton()
         assigneeButton.text = "Поменять исполнителя"
-        assigneeButton.callbackData = "ASSIGNEE_BUTTON"
+        assigneeButton.callbackData = Constant.ASSIGNEE_BUTTON
 
         rowInLine.add(statusButton)
         rowInLine.add(dateEndButton)
@@ -198,24 +196,17 @@ class TelegramBot(botConfig: BotConfig) : TelegramLongPollingBot() {
         inlineMarkup.keyboard = rowsInline
         message.replyMarkup = inlineMarkup
 
-        try {
-            execute(message)
-        } catch (e: TelegramApiException) {
-            logger.error(e.message)
-        }
+        executeMessage(message)
     }
 
     private fun getMyTasks(chatId: Long) {
 
-       for ( i in 1..10 ) {
-           val taskInfo =
-               "Список задач\n" +
-                       "{$i} - Код: |" + "Наименование: |" + "Описание: |" + "Дата начала: |" + "Дата окончания: |" + "Исполнитель: |" + "Статус:"
-
-           sendMessage(chatId, taskInfo)
-       }
-
-
+        for (i in 1..10) {
+            val taskInfo =
+                "Список задач\n" +
+                        "{$i} - Код: |" + "Наименование: |" + "Описание: |" + "Дата начала: |" + "Дата окончания: |" + "Исполнитель: |" + "Статус:"
+            sendMessage(chatId, taskInfo)
+        }
     }
 
     private fun startCommandReciver(chatId: Long?, name: String) {
@@ -225,19 +216,23 @@ class TelegramBot(botConfig: BotConfig) : TelegramLongPollingBot() {
         sendMessage(chatId, answer, getKeyboard())
     }
 
-    private fun sendMessage(chatId: Long?, textToSend: String, keyboardMarkup: ReplyKeyboardMarkup? = null)  {
+    private fun sendMessage(chatId: Long?, textToSend: String, keyboardMarkup: ReplyKeyboardMarkup? = null) {
         val message = SendMessage()
         message.chatId = chatId.toString()
         message.text = textToSend
 
         keyboardMarkup?.let { message.replyMarkup = keyboardMarkup }
 
+        executeMessage(message)
+
+    }
+
+    private fun executeMessage(message: SendMessage) {
         try {
             execute(message)
         } catch (e: TelegramApiException) {
-            logger.error("Error: ${e.message}")
+            logger.error("$ERROR_MSG ${e.message}")
         }
-
     }
 
 }

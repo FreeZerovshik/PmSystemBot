@@ -11,5 +11,8 @@ data class BotConfig(
     val botName: String,
 
     @Value("\${bot.token}")
-    val token: String
+    val token: String,
+
+    @Value("\${bot.owner}")
+    val owner: Long
 )

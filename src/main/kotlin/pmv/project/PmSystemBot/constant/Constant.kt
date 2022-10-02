@@ -8,6 +8,10 @@ class Constant {
                 "Введите /deleteinfo для удаления инфомарции о себе\n" +
                 "Введите /help для получения справки по работе данного бота\n"
 
+        val STATUS_BUTTON = "STATUS_BUTTON"
+        val DATEEND_BUTTON = "DATEEND_BUTTON"
+        val ASSIGNEE_BUTTON = "ASSIGNEE_BUTTON"
+
     }
 
 }
